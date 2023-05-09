@@ -1,0 +1,6 @@
+[submodule "include/GameNetworkingSockets"]
+	path = include/GameNetworkingSockets
+	url = https://github.com/ValveSoftware/GameNetworkingSockets.git
+[submodule "include/json"]
+	path = include/json
+	url = https://github.com/nlohmann/json.git
