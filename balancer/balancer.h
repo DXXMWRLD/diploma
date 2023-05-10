@@ -39,8 +39,8 @@ public:
 
   std::vector<std::thread> threads_;
   std::unordered_map<HSteamNetConnection, std::unique_ptr<Server>> servers_;
+  std::unordered_map<HSteamNetConnection, int32_t> connectionToPort_;
   std::unordered_map<nlohmann::json, std::pair<HSteamNetConnection, Statistic>> statistics_;
 
-  std::set<HSteamNetConnection> connectionsPoll_;
   int currentPort_ = 6655;
 };

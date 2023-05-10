@@ -65,7 +65,6 @@ void Server::connectBalancer() {
 void Server::run() {
   serverIsRunning_ = true;
   netThread_       = std::thread(&Server::netThreadRunFunc, this);
-  netThread_.detach();
 }
 
 
@@ -142,10 +141,6 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
 
       balancerConnection_ = info->m_hConn;
       std::cout << "SERVER " << RED "Balancer connected " << balancerConnection_ << std::endl;
-      json j{{"message", "Server INITED"}};
-      string message_str = j.dump();
-      int bytes_sent     = SteamNetworkingSockets()->SendMessageToConnection(
-              balancerConnection_, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
 
       isBalancerConnected_ = true;
       SteamNetworkingSockets()->SetConnectionPollGroup(balancerConnection_, balancerPollGroup_);
@@ -293,6 +288,7 @@ void Server::netThreadRunFunc() {
           balancerConnection_, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  SteamNetworkingSockets()->CloseListenSocket(listenSocket_);
 
   std::cout << "SERVER " << RED "Server stopped" << std::endl;
 }

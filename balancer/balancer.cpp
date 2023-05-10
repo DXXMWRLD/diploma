@@ -60,11 +60,27 @@ nlohmann::json Balancer::serverDistribution() {
 
 
 void Balancer::startNewServer(nlohmann::json j) {
-  int port = j["port"];
+  int port       = j["port"];
+  string address = j["address"];
 
   auto server = std::make_unique<Server>(port);
   server->run();
-  servers_.emplace(port, std::move(server));
+
+  SteamNetworkingIPAddr new_addr{};
+  new_addr.Clear();
+  new_addr.ParseString(address.c_str());
+  new_addr.m_port = port;
+  SteamNetworkingConfigValue_t opt{};
+
+  auto newConnection = SteamNetworkingSockets()->ConnectByIPAddress(new_addr, 0, &opt);
+
+  if (newConnection == k_HSteamNetConnection_Invalid) {
+    throw std::runtime_error("Failed to create connection");
+  }
+
+  SteamNetworkingSockets()->SetConnectionPollGroup(newConnection, pollGroup_);
+  servers_.emplace(newConnection, std::move(server));
+  connectionToPort_[port] = newConnection;
 }
 
 
@@ -72,13 +88,13 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
   // What's the state of the connection?
   switch (info->m_info.m_eState) {
   case k_ESteamNetworkingConnectionState_None:
-    std::cout << "BALANCER " << GRN "Disconnecting " << info->m_hConn << ":" << info->m_info.m_addrRemote.m_port
-              << std::endl;
     // NOTE: We will get callbacks here when we destroy connections.  You can ignore these.
     break;
 
   case k_ESteamNetworkingConnectionState_ClosedByPeer:
   case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+    std::cout << "BALANCER " << GRN "Disconnecting " << info->m_hConn << ":" << info->m_info.m_addrRemote.m_port
+              << std::endl;
     // Ignore if they were not previously connected.  (If they disconnected
     // before we accepted the connection.)
     if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connected) {
@@ -117,40 +133,14 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
               << std::endl;
 
 
-    auto j              = serverDistribution();
-    int port            = j["port"];
-    std::string address = j["address"];
+    auto j   = serverDistribution();
+    int port = j["port"];
 
-    auto serverFind = servers_.find(port);
-    if (serverFind == servers_.end()) {
+    auto serverFind = connectionToPort_.find(port);
+    if (serverFind == connectionToPort_.end()) {
       std::cout << "BALANCER "
                 << "Starting new server" << std::endl;
       startNewServer(j);
-
-      SteamNetworkingIPAddr new_addr{};
-      new_addr.Clear();
-      new_addr.ParseString(address.c_str());
-      new_addr.m_port = port;
-      SteamNetworkingConfigValue_t opt{};
-
-      auto newConnection = SteamNetworkingSockets()->ConnectByIPAddress(new_addr, 0, &opt);
-
-      if (newConnection == k_HSteamNetConnection_Invalid) {
-        throw std::runtime_error("Failed to create connection");
-      }
-
-      // SteamNetworkingUtils()->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_NagleTime, 0);
-      // int32_t p;
-      // size_t cbP = sizeof(p);
-      // if (auto getOk = SteamNetworkingUtils()->GetConfigValue(k_ESteamNetworkingConfig_NagleTime,
-      //                                                         k_ESteamNetworkingConfig_Global, 0, nullptr, &p, &cbP);
-      //     getOk == k_ESteamNetworkingGetConfigValue_OK || //
-      //     getOk == k_ESteamNetworkingGetConfigValue_OKInherited) {
-      // } else {
-      //   throw std::runtime_error("Failed to get global Nagle time");
-      // }
-
-      SteamNetworkingSockets()->SetConnectionPollGroup(newConnection, pollGroup_);
     }
 
     string message_str = j.dump();
@@ -177,16 +167,17 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
 }
 
 
-void OnMessageReceived(const char* data, int data_len, HSteamNetConnection conn) {
+json readJSON(const char* data, int data_len, HSteamNetConnection conn) {
   // parse json message
   try {
     json message = json::parse(data, data + data_len);
     cout << "Received message: " << message.dump() << endl;
+    return message;
   } catch (const exception& ex) {
     cerr << "Error: failed to parse message as json: " << ex.what() << endl;
   }
+  return json();
 }
-
 
 bool Balancer::receiveMessage() {
   ISteamNetworkingMessage* incoming_message = nullptr;
@@ -196,8 +187,23 @@ bool Balancer::receiveMessage() {
     return false;
   }
 
-  OnMessageReceived((const char*)incoming_message->m_pData, incoming_message->m_cbSize, incoming_message->m_conn);
+  auto j = readJSON((const char*)incoming_message->m_pData, incoming_message->m_cbSize, incoming_message->m_conn);
 
+  if (j.contains("message")) {
+    std::cout << "BALANCER " << GRN "remove server with connection " << incoming_message->m_conn << std::endl;
+    auto find = servers_.find(incoming_message->m_conn);
+    if (find != servers_.end()) {
+      find->second->netThread_.join();
+      servers_.erase(find);
+      SteamNetworkingSockets()->CloseConnection(incoming_message->m_conn, 0, nullptr, false);
+    }
+    for (auto it = connectionToPort_.begin(); it != connectionToPort_.end(); ++it) {
+      if (it->second == incoming_message->m_conn) {
+        connectionToPort_.erase(it);
+        break;
+      }
+    }
+  }
   return true;
 }
 
