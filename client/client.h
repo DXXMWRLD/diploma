@@ -15,5 +15,5 @@ public:
 public:
   SteamNetworkingIPAddr addrServer_;
   HSteamNetConnection steamConnection_{};
-  ClientConnectionHandler connectionHandler_;
+  ClientConnectionHandler connection_;
 };

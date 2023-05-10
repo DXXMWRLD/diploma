@@ -2,14 +2,16 @@
 #include <cstdio>
 #include <cstdarg>
 #include <unistd.h>
+#include <thread>
 #include <csignal>
-#include "client.h"
+#include "balancer.h"
 #include <nlohmann/json.hpp>
 #include "steam/steamnetworkingsockets.h"
 #include "steam/isteamnetworkingutils.h"
 #ifndef STEAMNETWORKINGSOCKETS_OPENSOURCE
 #include <steam/steam_api.h>
 #endif
+#include <stdlib.h>
 
 
 using namespace std;
@@ -76,37 +78,37 @@ static void InitSteamDatagramConnectionSockets() {
 }
 
 
+void systemCall(const char* cmd) {
+  auto rc = system(cmd);
+  (void)rc;
+}
+
+
 int main(int argc, char const* argv[]) {
 
-  if (argc != 3) {
+  if (argc != 2) {
     cerr << "Usage: " << argv[0] << " <port>" << endl;
     return 1;
   }
 
-  auto address = argv[1];
-  auto port    = atoi(argv[2]);
+  auto port = atoi(argv[1]);
 
+  // initialize steam networking
   InitSteamDatagramConnectionSockets();
 
-  // // create a client socket
-  Client client(address, port);
+  Balancer server(port);
 
-  // // send a json message
-  json message       = {{"name", "Alice"}, {"age", 30}};
-  string message_str = message.dump();
+  server.run();
+  // std::thread thread(systemCall, "./Client 127.0.0.1 8080");
+  // thread.detach();
 
-
-  int bytes_sent
-      = SteamNetworkingSockets()->SendMessageToConnection(client.connection_.steamConnection_, message_str.c_str(),
-                                                          message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
-  if (bytes_sent < 0) {
-    cerr << "Error: failed to send message." << endl;
-    return 1;
-  }
+  // std::thread thread1(systemCall, "./Client 127.0.0.1 8080");
+  // thread1.detach();
 
   while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(50));
+    server.netThreadRunFunc();
   }
+
 
   return 0;
 }

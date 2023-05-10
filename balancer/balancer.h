@@ -2,11 +2,12 @@
 
 #include <steam/steamnetworkingsockets.h>
 #include <unordered_map>
+#include "statistic.h"
+#include <nlohmann/json.hpp>
 
-
-class Server {
+class Balancer {
 public:
-  Server(uint16_t port);
+  Balancer(uint16_t port);
 
 public:
   static void netConnectionStatusChangeCallBack(SteamNetConnectionStatusChangedCallback_t* info);
@@ -18,21 +19,16 @@ public:
   bool receiveMessage();
   void run();
 
+
+  nlohmann::json serverDistribution();
+
 public:
   HSteamListenSocket listenSocket_;
   SteamNetworkingIPAddr serverAddr_{};
   uint16_t port_ = 0;
-  static Server* callbackInstance_;
+  static Balancer* callbackInstance_;
   bool serverIsRunning_ = false;
   HSteamNetPollGroup pollGroup_;
 
-  struct ClientInfo {
-    ClientInfo(int32_t world_id)
-        : worldId_(world_id) {
-    }
-
-    int32_t worldId_;
-  };
-
-  std::unordered_map<HSteamNetConnection, ClientInfo> clients_;
+  std::unordered_map<HSteamNetConnection, Statistic> servers_;
 };

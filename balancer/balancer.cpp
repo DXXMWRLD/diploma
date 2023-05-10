@@ -1,15 +1,14 @@
-#include "server.h"
+#include "balancer.h"
 #include <thread>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include "sample/cpu_usage.h"
 
 using namespace std;
 using json = nlohmann::json;
 
-Server* Server::callbackInstance_ = nullptr;
+Balancer* Balancer::callbackInstance_ = nullptr;
 
-Server::Server(uint16_t port)
+Balancer::Balancer(uint16_t port)
     : port_(port)
     , pollGroup_(SteamNetworkingSockets()->CreatePollGroup()) {
   serverAddr_.Clear();
@@ -28,27 +27,32 @@ Server::Server(uint16_t port)
 }
 
 
-void Server::run() {
+void Balancer::run() {
   serverIsRunning_ = true;
 }
 
 
-void Server::addConnectionToPollGroup(HSteamNetConnection conn) const {
+void Balancer::addConnectionToPollGroup(HSteamNetConnection conn) const {
   SteamNetworkingSockets()->SetConnectionPollGroup(conn, pollGroup_);
 }
 
-void Server::netConnectionStatusChangeCallBack(SteamNetConnectionStatusChangedCallback_t* info) {
+void Balancer::netConnectionStatusChangeCallBack(SteamNetConnectionStatusChangedCallback_t* info) {
   callbackInstance_->onSteamNetConnectionStatusChanged(info);
 }
 
 
-void Server::pollConnectionStateChanges() {
+void Balancer::pollConnectionStateChanges() {
   callbackInstance_ = this;
   SteamNetworkingSockets()->RunCallbacks();
 }
 
 
-void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* info) {
+nlohmann::json Balancer::serverDistribution() {
+  return json{{"addresses", "127.0.0.1"}, {"port", 6655}};
+}
+
+
+void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* info) {
   // What's the state of the connection?
   switch (info->m_info.m_eState) {
   case k_ESteamNetworkingConnectionState_None:
@@ -60,21 +64,11 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
     // Ignore if they were not previously connected.  (If they disconnected
     // before we accepted the connection.)
     if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connected) {
-      // Locate the client.  Note that it should have been found, because this
-      // is the only codepath where we remove clients (except on shutdown),
-      // and connection change callbacks are dispatched in queue order.
-      if (auto itClient = clients_.find(info->m_hConn); itClient != clients_.end()) {
-        // Select appropriate log messages
-        // Note that here we could check the reason code to see if
-        // it was a "usual" connection or an "unusual" one.
-        const char* pszDebugLogAction
-            = (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally)
-                  ? "problem detected locally"
-                  : "closed by peer";
-        cerr << pszDebugLogAction << endl;
-        // TODO: Remove from world
-        clients_.erase(itClient);
-      }
+      const char* pszDebugLogAction
+          = (info->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally)
+                ? "problem detected locally"
+                : "closed by peer";
+      cerr << pszDebugLogAction << endl;
     }
 
     // Clean up the connection.  This is important!
@@ -90,22 +84,27 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
   case k_ESteamNetworkingConnectionState_Connecting: {
     std::cout << "Connecting " << info->m_hConn << std::endl;
     // This must be a new connection
-    if (clients_.count(info->m_hConn) == 0) {
 
-      // A client is attempting to connect
-      // Try to accept the connection.
-      if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
-        // This could fail.  If the remote host tried to connect, but then
-        // disconnected, the connection may already be half closed.  Just
-        // destroy whatever we have on our side.
-        SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
-        break;
-      }
-
-      // Assign the poll group
-      addConnectionToPollGroup(info->m_hConn);
+    // A client is attempting to connect
+    // Try to accept the connection.
+    if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
+      // This could fail.  If the remote host tried to connect, but then
+      // disconnected, the connection may already be half closed.  Just
+      // destroy whatever we have on our side.
+      SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
       break;
     }
+
+    auto j             = serverDistribution();
+    string message_str = j.dump();
+
+    int bytes_sent = SteamNetworkingSockets()->SendMessageToConnection(
+        info->m_hConn, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
+    // Assign the poll group
+    // addConnectionToPollGroup(info->m_hConn);
+    SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
+
+    break;
   }
 
   case k_ESteamNetworkingConnectionState_Connected:
@@ -132,7 +131,7 @@ void OnMessageReceived(const char* data, int data_len, HSteamNetConnection conn)
 }
 
 
-bool Server::receiveMessage() {
+bool Balancer::receiveMessage() {
   ISteamNetworkingMessage* incoming_message = nullptr;
   const int num_msg = SteamNetworkingSockets()->ReceiveMessagesOnPollGroup(pollGroup_, &incoming_message, 1);
 
@@ -146,13 +145,13 @@ bool Server::receiveMessage() {
 }
 
 
-void Server::processIncomingMessages() {
+void Balancer::processIncomingMessages() {
   while (receiveMessage()) {
   }
 }
 
 
-void Server::netThreadRunFunc() {
+void Balancer::netThreadRunFunc() {
   float cpu_sum             = 0;
   int cpu_check_frequency   = 100;
   size_t previous_idle_time = 0, previous_total_time = 0;
