@@ -82,7 +82,7 @@ void ClientConnectionHandler::onSteamNetConnectionStatusChanged(SteamNetConnecti
 
   case k_ESteamNetworkingConnectionState_ClosedByPeer:
   case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-    std::cout << CYN "Disconnecting " << pInfo->m_hConn << std::endl;
+    std::cout << CYN "Disconnecting " << pInfo->m_hConn << ":" << pInfo->m_info.m_addrRemote.m_port << std::endl;
     // Print an appropriate message
     if (pInfo->m_eOldState == k_ESteamNetworkingConnectionState_Connecting) {
       // Note: we could distinguish between a timeout, a rejected connection,
@@ -112,13 +112,8 @@ void ClientConnectionHandler::onSteamNetConnectionStatusChanged(SteamNetConnecti
     break;
   }
 
-  case k_ESteamNetworkingConnectionState_Connecting:
-    std::cout << CYN "Connecting " << pInfo->m_hConn << std::endl;
-
-    break;
-
   case k_ESteamNetworkingConnectionState_Connected: {
-    std::cout << CYN "Connected " << pInfo->m_hConn << std::endl;
+    std::cout << CYN "Connected " << pInfo->m_hConn << ":" << pInfo->m_info.m_addrRemote.m_port << std::endl;
 
     // TODO
     break;

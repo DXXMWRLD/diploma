@@ -1,10 +1,11 @@
 #include "server.h"
-#include <thread>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include "sample/cpu_usage.h"
 #include "sample/json_reader.h"
 #include "sample/colors.h"
+#include "sample/settings.h"
+
 
 using namespace std;
 using json = nlohmann::json;
@@ -13,9 +14,10 @@ Server* Server::callbackInstance_ = nullptr;
 
 Server::Server(uint16_t port)
     : port_(port)
-    , pollGroup_(SteamNetworkingSockets()->CreatePollGroup()) {
+    , pollGroup_(SteamNetworkingSockets()->CreatePollGroup())
+    , balancerPollGroup_(SteamNetworkingSockets()->CreatePollGroup()) {
 
-  std::cout << RED "Starting server on port: " << port_ << std::endl;
+  std::cout << "SERVER " << RED "Starting server on port: " << port_ << std::endl;
   serverAddr_.Clear();
   serverAddr_.m_port = port_;
 
@@ -32,14 +34,45 @@ Server::Server(uint16_t port)
 }
 
 
+void Server::connectBalancer() {
+  SteamNetworkingIPAddr new_addr{};
+  new_addr.Clear();
+  string address = "127.0.0.1";
+  new_addr.ParseString(address.c_str());
+  new_addr.m_port = 8080;
+  SteamNetworkingConfigValue_t opt{};
+  opt.SetPtr(k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged, (void*)netConnectionStatusChangeCallBack);
+
+  auto newConnection = SteamNetworkingSockets()->ConnectByIPAddress(new_addr, 1, &opt);
+
+  if (newConnection == k_HSteamNetConnection_Invalid) {
+    throw std::runtime_error("Failed to create connection");
+  }
+
+  SteamNetworkingUtils()->SetGlobalConfigValueInt32(k_ESteamNetworkingConfig_NagleTime, 0);
+  int32_t p;
+  size_t cbP = sizeof(p);
+  if (auto getOk = SteamNetworkingUtils()->GetConfigValue(k_ESteamNetworkingConfig_NagleTime,
+                                                          k_ESteamNetworkingConfig_Global, 0, nullptr, &p, &cbP);
+      getOk == k_ESteamNetworkingGetConfigValue_OK || //
+      getOk == k_ESteamNetworkingGetConfigValue_OKInherited) {
+  } else {
+    throw std::runtime_error("Failed to get global Nagle time");
+  }
+}
+
+
 void Server::run() {
   serverIsRunning_ = true;
+  netThread_       = std::thread(&Server::netThreadRunFunc, this);
+  netThread_.detach();
 }
 
 
 void Server::addConnectionToPollGroup(HSteamNetConnection conn) const {
   SteamNetworkingSockets()->SetConnectionPollGroup(conn, pollGroup_);
 }
+
 
 void Server::netConnectionStatusChangeCallBack(SteamNetConnectionStatusChangedCallback_t* info) {
   callbackInstance_->onSteamNetConnectionStatusChanged(info);
@@ -61,7 +94,8 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
 
   case k_ESteamNetworkingConnectionState_ClosedByPeer:
   case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
-    std::cout << RED "Disconnecting " << info->m_hConn << std::endl;
+    std::cout << "SERVER " << RED "Disconnecting " << info->m_hConn << ":" << info->m_info.m_addrRemote.m_port
+              << std::endl;
 
     // Ignore if they were not previously connected.  (If they disconnected
     // before we accepted the connection.)
@@ -94,12 +128,10 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
   }
 
   case k_ESteamNetworkingConnectionState_Connecting: {
-    std::cout << RED "Connecting " << info->m_hConn << std::endl;
-    // This must be a new connection
-    if (clients_.count(info->m_hConn) == 0) {
+    std::cout << "SERVER " << RED "Connecting " << info->m_hConn << ":" << info->m_info.m_addrRemote.m_port
+              << std::endl;
 
-      // A client is attempting to connect
-      // Try to accept the connection.
+    if (!isBalancerConnected_) {
       if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
         // This could fail.  If the remote host tried to connect, but then
         // disconnected, the connection may already be half closed.  Just
@@ -108,16 +140,46 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
         break;
       }
 
-      // Assign the poll group
-      addConnectionToPollGroup(info->m_hConn);
+      balancerConnection_ = info->m_hConn;
+      std::cout << "SERVER " << RED "Balancer connected " << balancerConnection_ << std::endl;
+      json j{{"message", "Server INITED"}};
+      string message_str = j.dump();
+      int bytes_sent     = SteamNetworkingSockets()->SendMessageToConnection(
+              balancerConnection_, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
 
-      clients_.emplace(info->m_hConn, Server::ClientInfo());
-      break;
+      isBalancerConnected_ = true;
+      SteamNetworkingSockets()->SetConnectionPollGroup(balancerConnection_, balancerPollGroup_);
+
+    } else {
+      // This must be a new connection
+      if (clients_.count(info->m_hConn) == 0) {
+
+        // A client is attempting to connect
+        // Try to accept the connection.
+        if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
+          // This could fail.  If the remote host tried to connect, but then
+          // disconnected, the connection may already be half closed.  Just
+          // destroy whatever we have on our side.
+          SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
+          break;
+        }
+
+        // Assign the poll group
+        addConnectionToPollGroup(info->m_hConn);
+
+        auto world_id = worldDistribution();
+        if (worlds_.count(world_id) == 0) {
+          runWorld(world_id);
+        }
+
+        clients_.emplace(info->m_hConn, Server::ClientInfo(world_id));
+        break;
+      }
     }
   }
 
   case k_ESteamNetworkingConnectionState_Connected:
-    cerr << "Connected" << endl;
+    cerr << "SERVER " << CYN "Connected " << info->m_hConn << ":" << info->m_info.m_addrRemote.m_port << std::endl;
     // We will get a callback immediately after accepting the connection.
     // Since we are the server, we can ignore this, it's not news to us.
     break;
@@ -149,33 +211,88 @@ void Server::processIncomingMessages() {
 }
 
 
+int32_t Server::worldDistribution() {
+  return 1 + rand() % WORLDS_MAX_COUNT;
+}
+
+
+void Server::addClientToWorld(int32_t world_id) {
+}
+
+
+void Server::runWorld(int32_t world_id) {
+  worlds_.emplace(world_id);
+}
+
+
 void Server::netThreadRunFunc() {
-  float cpu_sum             = 0;
-  int cpu_check_frequency   = 100;
+  float cpu_sum                     = 0;
+  constexpr int cpu_check_frequency = CPU_CHECK_INTERVAL / SYNC_INTERVAL;
   size_t previous_idle_time = 0, previous_total_time = 0;
 
   init();
 
+  int64_t empty_server_time = 0;
   for (int i(0); serverIsRunning_; ++i) {
+    auto start = std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::high_resolution_clock::now().time_since_epoch())
+                     .count();
+
+    // std::cout << "SERVER " <<  "start: " << start << std::endl;
+
+    processIncomingMessages();
+    pollConnectionStateChanges();
+
+    if (clients_.empty()) {
+      if (empty_server_time == 0) {
+        empty_server_time = start;
+      } else if (start - empty_server_time > EMPTY_SERVER_CLOSE_DELAY) {
+        std::cout << "SERVER "
+                  << "Empty server closed: Empty since " << empty_server_time << " Time now " << start << std::endl;
+        serverIsRunning_ = false;
+      }
+      continue;
+    }
+
+    empty_server_time = 0;
+
+    std::map<int, int> worldsActivities;
+    for (auto& [conn, clientInfo] : clients_) {
+      worldsActivities[clientInfo.worldId_]++;
+    }
+
+    for (auto it = worlds_.begin(); it != worlds_.end();) {
+      if (worldsActivities.count(*it) == 0) {
+        it = worlds_.erase(it);
+      } else
+        ++it;
+    }
+
     cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
 
     if (i % cpu_check_frequency == 0) {
-      // std::cout << RED  "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
-      // std::cout << RED  "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
+      std::cout << "SERVER " << RED "Average CPU usage for : " << cpu_sum / (float)cpu_check_frequency << '%'
+                << std::endl;
+      std::cout << "SERVER " << RED "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
       cpu_sum = 0;
     }
-    // for (float k(0); k < 110000000000000000000000000.f; ++k) {
-    //   float j(1000000);
-    //   while (j < 100000000000000000000000000000000000.f) {
-    //     auto b = j * j - j + j / k;
-    //     b *= b;
-    //     (void)b;
-    //     ++j;
-    //   }
-    //   // std::this_thread::sleep_for(std::chrono::microseconds(500));
-    // }
-    processIncomingMessages();
-    pollConnectionStateChanges();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    auto tick_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::high_resolution_clock::now().time_since_epoch())
+                         .count()
+                     - start;
+    // std::cout << "SERVER " <<  "tick_time: " << tick_time << std::endl;
+
+    if (tick_time < SYNC_INTERVAL)
+      std::this_thread::sleep_for(std::chrono::milliseconds(SYNC_INTERVAL - tick_time));
   }
+
+  json j{{"message", "Server stopped"}};
+  string message_str = j.dump();
+  int bytes_sent     = SteamNetworkingSockets()->SendMessageToConnection(
+          balancerConnection_, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  std::cout << "SERVER " << RED "Server stopped" << std::endl;
 }

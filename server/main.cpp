@@ -98,17 +98,7 @@ int main(int argc, char const* argv[]) {
 
   Server server(port);
 
-  // server.run();
-  // std::thread thread(systemCall, "./Client 127.0.0.1 8080");
-  // thread.detach();
-
-  // std::thread thread1(systemCall, "./Client 127.0.0.1 8080");
-  // thread1.detach();
-
-  while (true) {
-    server.netThreadRunFunc();
-  }
-
+  server.run();
 
   return 0;
 }

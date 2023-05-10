@@ -18,6 +18,11 @@ using namespace std;
 using json = nlohmann::json;
 
 
+void systemCall(const char* cmd) {
+  auto rc = system(cmd);
+  (void)rc;
+}
+
 static void NukeProcess(int rc) {
 #ifdef WIN32
   ExitProcess(rc);
@@ -78,12 +83,6 @@ static void InitSteamDatagramConnectionSockets() {
 }
 
 
-void systemCall(const char* cmd) {
-  auto rc = system(cmd);
-  (void)rc;
-}
-
-
 int main(int argc, char const* argv[]) {
 
   if (argc != 2) {
@@ -99,8 +98,6 @@ int main(int argc, char const* argv[]) {
   Balancer server(port);
 
   server.run();
-  std::thread thread(systemCall, "./Server 6655");
-  thread.detach();
 
   while (true) {
     server.netThreadRunFunc();

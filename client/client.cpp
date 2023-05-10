@@ -59,16 +59,16 @@ bool Client::receiveMessage() {
   auto j
       = OnMessageReceived((const char*)incoming_message->m_pData, incoming_message->m_cbSize, incoming_message->m_conn);
 
-  if (j.contains("address") && j.contains("port")) {
-    auto address = j["address"].get<std::string>();
-    auto port    = j["port"].get<uint16_t>();
-    std::cout << RED << "Connected to " << address << ":" << port << std::endl;
-    connection_.close();
-    connection_.init(address, port);
-    connection_.run();
-  } else {
-    //
-  }
+  // if (j.contains("address") && j.contains("port")) {
+  //   auto address = j["address"].get<std::string>();
+  //   auto port    = j["port"].get<uint16_t>();
+  //   std::cout << RED << "Trying to connect to " << address << ":" << port << std::endl;
+  //   connection_.close();
+  //   connection_.init(address, port);
+  //   connection_.run();
+  // } else {
+  //   //
+  // }
   return true;
 }
 
