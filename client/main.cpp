@@ -105,7 +105,7 @@ int main(int argc, char const* argv[]) {
   }
 
   while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(50));
+    client.netThreadRunFunc();
   }
 
   return 0;

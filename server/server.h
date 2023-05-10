@@ -3,7 +3,6 @@
 #include <steam/steamnetworkingsockets.h>
 #include <unordered_map>
 
-
 class Server {
 public:
   Server(uint16_t port);
@@ -27,10 +26,11 @@ public:
   HSteamNetPollGroup pollGroup_;
 
   struct ClientInfo {
+    ClientInfo() = default;
     ClientInfo(int32_t world_id)
         : worldId_(world_id) {
     }
-
+    ~ClientInfo() = default;
     int32_t worldId_;
   };
 

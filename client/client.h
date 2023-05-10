@@ -11,9 +11,14 @@ public:
 public:
   void pollConnectionStateChanges();
   void connectToRealm();
+  void netThreadRunFunc();
+  void processIncomingMessages();
+  bool receiveMessage();
 
 public:
   SteamNetworkingIPAddr addrServer_;
   HSteamNetConnection steamConnection_{};
   ClientConnectionHandler connection_;
+  bool isRunning_            = true;
+  bool isConnectedToBalancer = false;
 };

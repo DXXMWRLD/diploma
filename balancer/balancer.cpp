@@ -2,15 +2,19 @@
 #include <thread>
 #include <iostream>
 #include "sample/cpu_usage.h"
+#include "sample/colors.h"
 
 using namespace std;
 using json = nlohmann::json;
+
 
 Balancer* Balancer::callbackInstance_ = nullptr;
 
 Balancer::Balancer(uint16_t port)
     : port_(port)
     , pollGroup_(SteamNetworkingSockets()->CreatePollGroup()) {
+  std::cout << GRN "Starting balancer on port: " << port_ << std::endl;
+
   serverAddr_.Clear();
   serverAddr_.m_port = port_;
 
@@ -48,7 +52,7 @@ void Balancer::pollConnectionStateChanges() {
 
 
 nlohmann::json Balancer::serverDistribution() {
-  return json{{"addresses", "127.0.0.1"}, {"port", 6655}};
+  return json{{"address", "127.0.0.1"}, {"port", 6655}};
 }
 
 
@@ -56,6 +60,7 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
   // What's the state of the connection?
   switch (info->m_info.m_eState) {
   case k_ESteamNetworkingConnectionState_None:
+    std::cout << GRN "Disconnecting " << info->m_hConn << std::endl;
     // NOTE: We will get callbacks here when we destroy connections.  You can ignore these.
     break;
 
@@ -82,7 +87,7 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
   }
 
   case k_ESteamNetworkingConnectionState_Connecting: {
-    std::cout << "Connecting " << info->m_hConn << std::endl;
+    std::cout << GRN "Connecting " << info->m_hConn << std::endl;
     // This must be a new connection
 
     // A client is attempting to connect
@@ -94,14 +99,17 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
       SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
       break;
     }
+    addConnectionToPollGroup(info->m_hConn);
 
     auto j             = serverDistribution();
     string message_str = j.dump();
 
     int bytes_sent = SteamNetworkingSockets()->SendMessageToConnection(
         info->m_hConn, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     // Assign the poll group
-    // addConnectionToPollGroup(info->m_hConn);
     SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
 
     break;
@@ -162,20 +170,20 @@ void Balancer::netThreadRunFunc() {
     cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
 
     if (i % cpu_check_frequency == 0) {
-      std::cout << "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
-      std::cout << "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
+      // std::cout << GRN  "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
+      // std::cout << GRN  "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
       cpu_sum = 0;
     }
-    for (float k(0); k < 110000000000000000000000000.f; ++k) {
-      float j(1000000);
-      while (j < 100000000000000000000000000000000000.f) {
-        auto b = j * j - j + j / k;
-        b *= b;
-        (void)b;
-        ++j;
-      }
-      // std::this_thread::sleep_for(std::chrono::microseconds(500));
-    }
+    // for (float k(0); k < 110000000000000000000000000.f; ++k) {
+    //   float j(1000000);
+    //   while (j < 100000000000000000000000000000000000.f) {
+    //     auto b = j * j - j + j / k;
+    //     b *= b;
+    //     (void)b;
+    //     ++j;
+    //   }
+    //   // std::this_thread::sleep_for(std::chrono::microseconds(500));
+    // }
     processIncomingMessages();
     pollConnectionStateChanges();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));

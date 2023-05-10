@@ -3,6 +3,8 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include "sample/cpu_usage.h"
+#include "sample/json_reader.h"
+#include "sample/colors.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -12,6 +14,8 @@ Server* Server::callbackInstance_ = nullptr;
 Server::Server(uint16_t port)
     : port_(port)
     , pollGroup_(SteamNetworkingSockets()->CreatePollGroup()) {
+
+  std::cout << RED "Starting server on port: " << port_ << std::endl;
   serverAddr_.Clear();
   serverAddr_.m_port = port_;
 
@@ -57,6 +61,8 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
 
   case k_ESteamNetworkingConnectionState_ClosedByPeer:
   case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+    std::cout << RED "Disconnecting " << info->m_hConn << std::endl;
+
     // Ignore if they were not previously connected.  (If they disconnected
     // before we accepted the connection.)
     if (info->m_eOldState == k_ESteamNetworkingConnectionState_Connected) {
@@ -88,7 +94,7 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
   }
 
   case k_ESteamNetworkingConnectionState_Connecting: {
-    std::cout << "Connecting " << info->m_hConn << std::endl;
+    std::cout << RED "Connecting " << info->m_hConn << std::endl;
     // This must be a new connection
     if (clients_.count(info->m_hConn) == 0) {
 
@@ -104,6 +110,8 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
 
       // Assign the poll group
       addConnectionToPollGroup(info->m_hConn);
+
+      clients_.emplace(info->m_hConn, Server::ClientInfo());
       break;
     }
   }
@@ -117,17 +125,6 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
   default:
     // Silences -Wswitch
     break;
-  }
-}
-
-
-void OnMessageReceived(const char* data, int data_len, HSteamNetConnection conn) {
-  // parse json message
-  try {
-    json message = json::parse(data, data + data_len);
-    cout << "Received message: " << message.dump() << endl;
-  } catch (const exception& ex) {
-    cerr << "Error: failed to parse message as json: " << ex.what() << endl;
   }
 }
 
@@ -163,20 +160,20 @@ void Server::netThreadRunFunc() {
     cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
 
     if (i % cpu_check_frequency == 0) {
-      std::cout << "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
-      std::cout << "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
+      // std::cout << RED  "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
+      // std::cout << RED  "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
       cpu_sum = 0;
     }
-    for (float k(0); k < 110000000000000000000000000.f; ++k) {
-      float j(1000000);
-      while (j < 100000000000000000000000000000000000.f) {
-        auto b = j * j - j + j / k;
-        b *= b;
-        (void)b;
-        ++j;
-      }
-      // std::this_thread::sleep_for(std::chrono::microseconds(500));
-    }
+    // for (float k(0); k < 110000000000000000000000000.f; ++k) {
+    //   float j(1000000);
+    //   while (j < 100000000000000000000000000000000000.f) {
+    //     auto b = j * j - j + j / k;
+    //     b *= b;
+    //     (void)b;
+    //     ++j;
+    //   }
+    //   // std::this_thread::sleep_for(std::chrono::microseconds(500));
+    // }
     processIncomingMessages();
     pollConnectionStateChanges();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));

@@ -1,5 +1,6 @@
 #include "connection.h"
 #include <iostream>
+#include "sample/colors.h"
 
 ClientConnectionHandler* ClientConnectionHandler::sPCallbackInstance_ = nullptr;
 
@@ -81,18 +82,19 @@ void ClientConnectionHandler::onSteamNetConnectionStatusChanged(SteamNetConnecti
 
   case k_ESteamNetworkingConnectionState_ClosedByPeer:
   case k_ESteamNetworkingConnectionState_ProblemDetectedLocally: {
+    std::cout << CYN "Disconnecting " << pInfo->m_hConn << std::endl;
     // Print an appropriate message
     if (pInfo->m_eOldState == k_ESteamNetworkingConnectionState_Connecting) {
       // Note: we could distinguish between a timeout, a rejected connection,
       // or some other transport problem.
-      std::cout << "We sought the remote host, yet our efforts were met with defeat. " << pInfo->m_info.m_szEndDebug
+      std::cout << CYN "We sought the remote host, yet our efforts were met with defeat. " << pInfo->m_info.m_szEndDebug
                 << std::endl;
     } else if (pInfo->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally) {
-      std::cout << "Alas, troubles beset us; we have lost contact with the host. " << pInfo->m_info.m_szEndDebug
+      std::cout << CYN "Alas, troubles beset us; we have lost contact with the host. " << pInfo->m_info.m_szEndDebug
                 << std::endl;
     } else {
       // NOTE: We could check the reason code for a normal disconnection
-      std::cout << pInfo->m_info.m_szEndDebug << std::endl;
+      std::cout << CYN << pInfo->m_info.m_szEndDebug << std::endl;
     }
 
     // Clean up the connection.  This is important!
@@ -111,12 +113,13 @@ void ClientConnectionHandler::onSteamNetConnectionStatusChanged(SteamNetConnecti
   }
 
   case k_ESteamNetworkingConnectionState_Connecting:
-    // timer_guard_connect_ = new timer_guard(timerLogger_, "connect_time");
-    // We will get this callback when we start connecting.
-    // We can ignore this.
+    std::cout << CYN "Connecting " << pInfo->m_hConn << std::endl;
+
     break;
 
   case k_ESteamNetworkingConnectionState_Connected: {
+    std::cout << CYN "Connected " << pInfo->m_hConn << std::endl;
+
     // TODO
     break;
   }

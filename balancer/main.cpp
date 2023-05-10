@@ -99,11 +99,8 @@ int main(int argc, char const* argv[]) {
   Balancer server(port);
 
   server.run();
-  // std::thread thread(systemCall, "./Client 127.0.0.1 8080");
-  // thread.detach();
-
-  // std::thread thread1(systemCall, "./Client 127.0.0.1 8080");
-  // thread1.detach();
+  std::thread thread(systemCall, "./Server 6655");
+  thread.detach();
 
   while (true) {
     server.netThreadRunFunc();
