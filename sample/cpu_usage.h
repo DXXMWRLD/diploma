@@ -78,7 +78,7 @@ double getCurrentValue() {
   } else {
     percent = (timeSample.tms_stime - lastSysCPU) + (timeSample.tms_utime - lastUserCPU);
     percent /= (now - lastCPU);
-    // percent /= numProcessors;
+    percent /= numProcessors;
     percent *= 100;
   }
   lastCPU     = now;

@@ -24,22 +24,6 @@ void Client::netThreadRunFunc() {
 
   for (int i(0); isRunning_; ++i) {
     cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
-
-    // if (i % cpu_check_frequency == 0) {
-    //   std::cout << CYN  "Average CPU usage for : " << cpu_sum / cpu_check_frequency << '%' << std::endl;
-    //   std::cout << CYN  "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
-    //   cpu_sum = 0;
-    // }
-    // for (float k(0); k < 110000000000000000000000000.f; ++k) {
-    //   float j(1000000);
-    //   while (j < 100000000000000000000000000000000000.f) {
-    //     auto b = j * j - j + j / k;
-    //     b *= b;
-    //     (void)b;
-    //     ++j;
-    //   }
-    //   // std::this_thread::sleep_for(std::chrono::microseconds(500));
-    // }
     processIncomingMessages();
     pollConnectionStateChanges();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));

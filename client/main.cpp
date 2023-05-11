@@ -92,17 +92,18 @@ int main(int argc, char const* argv[]) {
   Client client(address, port);
 
   // // send a json message
-  json message       = {{"name", "Alice"}, {"age", 30}};
-  string message_str = message.dump();
+  // json message       = {{"name", "Alice"}, {"age", 30}};
+  // string message_str = message.dump();
 
 
-  int bytes_sent
-      = SteamNetworkingSockets()->SendMessageToConnection(client.connection_.steamConnection_, message_str.c_str(),
-                                                          message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
-  if (bytes_sent < 0) {
-    cerr << "Error: failed to send message." << endl;
-    return 1;
-  }
+  // int bytes_sent
+  //     = SteamNetworkingSockets()->SendMessageToConnection(client.connection_.steamConnection_, message_str.c_str(),
+  //                                                         message_str.size(), k_nSteamNetworkingSend_Reliable,
+  //                                                         nullptr);
+  // if (bytes_sent < 0) {
+  //   cerr << "Error: failed to send message." << endl;
+  //   return 1;
+  // }
 
   while (true) {
     client.netThreadRunFunc();

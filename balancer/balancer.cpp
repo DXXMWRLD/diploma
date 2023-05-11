@@ -1,11 +1,12 @@
 #include "balancer.h"
 #include <thread>
 #include <iostream>
-// #include "sample/cpu_usage.h"
 #include "sample/colors.h"
 #include "sample/settings.h"
 #include <stdlib.h>
 #include <set>
+#include <chrono>
+
 
 using namespace std;
 using json = nlohmann::json;
@@ -55,7 +56,8 @@ void Balancer::pollConnectionStateChanges() {
 
 
 nlohmann::json Balancer::serverDistribution() {
-  return json{{"address", "127.0.0.1"}, {"port", 6655}};
+  auto port = currentPort_++;
+  return json{{"address", "127.0.0.1"}, {"port", port}};
 }
 
 
@@ -80,7 +82,11 @@ void Balancer::startNewServer(nlohmann::json j) {
 
   SteamNetworkingSockets()->SetConnectionPollGroup(newConnection, pollGroup_);
   servers_.emplace(newConnection, std::move(server));
-  connectionToPort_[port] = newConnection;
+  auto [it, success]       = statistic_.emplace(newConnection, ServerInfo());
+  it->second.address       = address;
+  it->second.port          = port;
+  it->second.worlds_count  = 0;
+  it->second.players_count = 0;
 }
 
 
@@ -136,10 +142,14 @@ void Balancer::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChanged
     auto j   = serverDistribution();
     int port = j["port"];
 
-    auto serverFind = connectionToPort_.find(port);
-    if (serverFind == connectionToPort_.end()) {
-      std::cout << "BALANCER "
-                << "Starting new server" << std::endl;
+    bool found = false;
+    for (auto& [conn, serverInfo] : statistic_) {
+      if (serverInfo.port == port) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
       startNewServer(j);
     }
 
@@ -197,13 +207,13 @@ bool Balancer::receiveMessage() {
       servers_.erase(find);
       SteamNetworkingSockets()->CloseConnection(incoming_message->m_conn, 0, nullptr, false);
     }
-    for (auto it = connectionToPort_.begin(); it != connectionToPort_.end(); ++it) {
-      if (it->second == incoming_message->m_conn) {
-        connectionToPort_.erase(it);
-        break;
-      }
-    }
+    statistic_.erase(incoming_message->m_conn);
+  } else {
+    auto it                  = statistic_.find(incoming_message->m_conn);
+    it->second.worlds_count  = j["worlds_count"];
+    it->second.players_count = j["clients_count"];
   }
+
   return true;
 }
 
@@ -216,6 +226,12 @@ void Balancer::processIncomingMessages() {
 
 void Balancer::netThreadRunFunc() {
   for (int i(0); serverIsRunning_; ++i) {
+    if (i % 250 == 0) {
+      print();
+      using namespace std::chrono;
+      time_t now = chrono::system_clock::to_time_t(chrono::system_clock::now());
+      cout << put_time(localtime(&now), "%F %T") << endl;
+    }
     processIncomingMessages();
     pollConnectionStateChanges();
     std::this_thread::sleep_for(std::chrono::milliseconds(20));

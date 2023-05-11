@@ -10,6 +10,7 @@
 #include <atomic>
 #include <iostream>
 #include <set>
+#include <nlohmann/json.hpp>
 
 // class World {
 // public:
@@ -65,6 +66,7 @@ public:
   int32_t worldDistribution();
   void addClientToWorld(int32_t world_id);
   void runWorld(int32_t world_id);
+  nlohmann::json generateStatisticsMessage(float cpu_load);
 
 public:
   HSteamListenSocket listenSocket_;

@@ -6,10 +6,28 @@
 #include <steam/steam_api.h>
 #endif
 #include <unordered_map>
-#include "statistic.h"
 #include <nlohmann/json.hpp>
 #include <thread>
 #include "server/server.h"
+
+
+struct ServerInfo {
+  ServerInfo()  = default;
+  ~ServerInfo() = default;
+
+  void print() const {
+    std::cout << "\tServer Info: " << std::endl;
+    std::cout << "\t\tAddress: " << address << std::endl;
+    std::cout << "\t\tPort: " << port << std::endl;
+    std::cout << "\t\tWorlds count: " << worlds_count << std::endl;
+    std::cout << "\t\tPlayers count: " << players_count << std::endl;
+  }
+
+  std::string address;
+  uint16_t port;
+  int worlds_count;
+  int players_count;
+};
 
 
 class Balancer {
@@ -26,6 +44,14 @@ public:
   bool receiveMessage();
   void run();
   void startNewServer(nlohmann::json);
+  void print() const {
+    std::cout << "Server Cluster Info: " << std::endl;
+    for (auto& [conn, statistic] : statistic_) {
+      std::cout << "\tConnection: " << conn << std::endl;
+      statistic.print();
+      std::cout << std::endl;
+    }
+  }
 
   nlohmann::json serverDistribution();
 
@@ -39,8 +65,9 @@ public:
 
   std::vector<std::thread> threads_;
   std::unordered_map<HSteamNetConnection, std::unique_ptr<Server>> servers_;
-  std::unordered_map<HSteamNetConnection, int32_t> connectionToPort_;
-  std::unordered_map<nlohmann::json, std::pair<HSteamNetConnection, Statistic>> statistics_;
+  std::unordered_map<HSteamNetConnection, ServerInfo> statistic_;
+
+  // std::unordered_map<HSteamNetConnection, int32_t> connectionToPort_;
 
   int currentPort_ = 6655;
 };

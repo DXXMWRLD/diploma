@@ -1,6 +1,5 @@
 #include "server.h"
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include "sample/cpu_usage.h"
 #include "sample/json_reader.h"
 #include "sample/colors.h"
@@ -220,6 +219,15 @@ void Server::runWorld(int32_t world_id) {
 }
 
 
+json Server::generateStatisticsMessage(float cpu_load) {
+  json message;
+  message["cpu_load"]      = cpu_load;
+  message["worlds_count"]  = worlds_.size();
+  message["clients_count"] = clients_.size();
+  return message;
+}
+
+
 void Server::netThreadRunFunc() {
   float cpu_sum                     = 0;
   constexpr int cpu_check_frequency = CPU_CHECK_INTERVAL / SYNC_INTERVAL;
@@ -266,9 +274,15 @@ void Server::netThreadRunFunc() {
     cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
 
     if (i % cpu_check_frequency == 0) {
-      std::cout << "SERVER " << RED "Average CPU usage for : " << cpu_sum / (float)cpu_check_frequency << '%'
-                << std::endl;
-      std::cout << "SERVER " << RED "Average CPU usage for current process: " << getCurrentValue() << '%' << std::endl;
+      auto j             = generateStatisticsMessage(cpu_sum / (float)cpu_check_frequency);
+      string message_str = j.dump();
+      int bytes_sent     = SteamNetworkingSockets()->SendMessageToConnection(
+              balancerConnection_, message_str.c_str(), message_str.size(), k_nSteamNetworkingSend_Reliable, nullptr);
+
+      // std::cout << "SERVER " << RED "Average CPU usage for : " << cpu_sum / (float)cpu_check_frequency << '%'
+      //           << std::endl;
+      // std::cout << "SERVER " << RED "Average CPU usage for current process: " << getCurrentValue() << '%' <<
+      // std::endl;
       cpu_sum = 0;
     }
 
