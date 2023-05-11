@@ -61,7 +61,7 @@ public:
   void addConnectionToPollGroup(HSteamNetConnection conn) const;
   bool receiveMessage();
   void run();
-  void connectBalancer();
+  void check_clients();
 
   int32_t worldDistribution();
   void addClientToWorld(int32_t world_id);
@@ -78,10 +78,12 @@ public:
 
   struct ClientInfo {
     ClientInfo() = default;
-    ClientInfo(int32_t world_id)
-        : worldId_(world_id) {
+    ClientInfo(int32_t worldId, int64_t time)
+        : worldId_(worldId)
+        , time_(time) {
     }
     ~ClientInfo() = default;
+    int64_t time_;
     int32_t worldId_;
   };
 

@@ -78,12 +78,6 @@ static void InitSteamDatagramConnectionSockets() {
 }
 
 
-void systemCall(const char* cmd) {
-  auto rc = system(cmd);
-  (void)rc;
-}
-
-
 int main(int argc, char const* argv[]) {
 
   if (argc != 2) {

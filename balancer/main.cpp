@@ -18,11 +18,6 @@ using namespace std;
 using json = nlohmann::json;
 
 
-void systemCall(const char* cmd) {
-  auto rc = system(cmd);
-  (void)rc;
-}
-
 static void NukeProcess(int rc) {
 #ifdef WIN32
   ExitProcess(rc);

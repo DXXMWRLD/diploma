@@ -16,17 +16,19 @@ void Client::pollConnectionStateChanges() {
 
 
 void Client::netThreadRunFunc() {
-  float cpu_sum             = 0;
-  int cpu_check_frequency   = 100;
-  size_t previous_idle_time = 0, previous_total_time = 0;
-
-  init();
-
   for (int i(0); isRunning_; ++i) {
-    cpu_sum += CPUCheck(previous_idle_time, previous_total_time);
     processIncomingMessages();
     pollConnectionStateChanges();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    if (i % 25 == 0 && i > 50) {
+      json message       = {{"health_check", i}};
+      string message_str = message.dump();
+
+
+      int bytes_sent = SteamNetworkingSockets()->SendMessageToConnection(connection_.steamConnection_,
+                                                                         message_str.c_str(), message_str.size(),
+                                                                         k_nSteamNetworkingSend_Reliable, nullptr);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
