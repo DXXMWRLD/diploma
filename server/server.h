@@ -11,6 +11,8 @@
 #include <iostream>
 #include <set>
 #include <nlohmann/json.hpp>
+#include <mutex>
+
 
 // class World {
 // public:
@@ -94,4 +96,6 @@ public:
   bool isBalancerConnected_ = false;
   HSteamNetPollGroup balancerPollGroup_;
   HSteamNetConnection balancerConnection_{};
+
+  inline static std::mutex mutex_{};
 };

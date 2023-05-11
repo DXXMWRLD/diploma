@@ -50,6 +50,7 @@ void Server::netConnectionStatusChangeCallBack(SteamNetConnectionStatusChangedCa
 
 
 void Server::pollConnectionStateChanges() {
+  // std::lock_guard<std::mutex> lock(mutex_);
   callbackInstance_ = this;
   SteamNetworkingSockets()->RunCallbacks();
 }
@@ -117,40 +118,43 @@ void Server::onSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCa
       std::cout << "SERVER:" << port_ << " " << RED "Balancer connected " << balancerConnection_ << std::endl;
 
       isBalancerConnected_ = true;
-      // SteamNetworkingSockets()->SetConnectionPollGroup(balancerConnection_, balancerPollGroup_);
+      SteamNetworkingSockets()->SetConnectionPollGroup(balancerConnection_, balancerPollGroup_);
 
     } else {
       // This must be a new connection
-      if (clients_.count(info->m_hConn) == 0) {
-        std::cout << "SERVER:" << port_ << " " << RED "New connection " << info->m_hConn << ":"
-                  << info->m_info.m_addrRemote.m_port << std::endl;
-        // A client is attempting to connect
-        // Try to accept the connection.
-        if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
-          // This could fail.  If the remote host tried to connect, but then
-          // disconnected, the connection may already be half closed.  Just
-          // destroy whatever we have on our side.
-          SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
-          break;
-        }
+      std::cout << "SERVER:" << port_ << " " << RED "New connection " << info->m_hConn << ":"
+                << info->m_info.m_addrRemote.m_port << std::endl;
 
-
-        auto world_id = worldDistribution();
-        std::cout << "SERVER:" << port_ << " " << RED "Connecting to world " << world_id << std::endl;
-        if (worlds_.count(world_id) == 0) {
-          runWorld(world_id);
-        }
-
-
-        clients_.emplace(info->m_hConn,
-                         Server::ClientInfo(world_id, std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                          std::chrono::high_resolution_clock::now().time_since_epoch())
-                                                          .count()));
-
-        // Assign the poll group
-        addConnectionToPollGroup(info->m_hConn);
+      // if (clients_.count(info->m_hConn) == 0) {
+      std::cout << "SERVER:" << port_ << " " << RED "New connection " << info->m_hConn << ":"
+                << info->m_info.m_addrRemote.m_port << std::endl;
+      // A client is attempting to connect
+      // Try to accept the connection.
+      if (SteamNetworkingSockets()->AcceptConnection(info->m_hConn) != k_EResultOK) {
+        // This could fail.  If the remote host tried to connect, but then
+        // disconnected, the connection may already be half closed.  Just
+        // destroy whatever we have on our side.
+        SteamNetworkingSockets()->CloseConnection(info->m_hConn, 0, nullptr, false);
         break;
       }
+
+
+      auto world_id = worldDistribution();
+      std::cout << "SERVER:" << port_ << " " << RED "Connecting to world " << world_id << std::endl;
+      if (worlds_.count(world_id) == 0) {
+        runWorld(world_id);
+      }
+
+
+      clients_.emplace(info->m_hConn,
+                       Server::ClientInfo(world_id, std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                        std::chrono::high_resolution_clock::now().time_since_epoch())
+                                                        .count()));
+
+      // Assign the poll group
+      addConnectionToPollGroup(info->m_hConn);
+      break;
+      // }
     }
   }
 
